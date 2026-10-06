@@ -470,7 +470,7 @@ defmodule Earmark.Transform do
       |> replace(~r{(^|[-–—/\(\[\{‘\s])\"}, "\\1“")
 
     escape = Map.get(options, :escape, true)
-    _escape_to_iodata1(element, 0, element, [], true, escape, 0)
+    _escape_to_iodata1(element, 0, element, [], true, escape, 0, 1)
   end
 
   defp escape(element, %{escape: escape}) do
@@ -519,7 +519,6 @@ defmodule Earmark.Transform do
     {"---", "—"},
     {"--", "–"},
     {?', "’"},
-    {?", "”"},
     {"...", "…"}
   ]
 
@@ -560,6 +559,25 @@ defmodule Earmark.Transform do
         escape,
         0
       )
+    end
+  end
+
+  # Smart quote alternation: alternate between opening “ and closing ” for state parameter > 0
+  # State 1 = next quote is opening, state 0 = next quote is closing
+  defp _escape_to_iodata1(<<?", rest::bits>>, skip, original, acc, true, escape, 1) do
+    _escape_to_iodata1(rest, skip + 1, original, [acc | "“"], true, escape, 0)
+  end
+
+  defp _escape_to_iodata1(<<?", rest::bits>>, skip, original, acc, true, escape, 0) do
+    _escape_to_iodata1(rest, skip + 1, original, [acc | "”"], true, escape, 1)
+  end
+
+  # Handle accumulated content before a quote (len > 1)
+  defp _escape_to_iodata1(<<?", rest::bits>>, skip, original, acc, true, escape, len) when is_integer(len), len > 1 do
+    part = binary_part(original, skip, len)
+    case rem(len, 2) do
+      0 -> _escape_to_iodata1(rest, skip + 1, original, [acc, part | "”"], true, escape, 1)
+      1 -> _escape_to_iodata1(rest, skip + 1, original, [acc, part | "“"], true, escape, 0)
     end
   end
 
